@@ -1,0 +1,6 @@
+void CommSubroutine(void);
+void RunSubroutine(void);
+void KeySubroutine(void);
+void DisplaySubroutine(void);
+
+extern unsigned char bEdge;			// Edge Model Mode

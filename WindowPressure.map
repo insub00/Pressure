@@ -1,0 +1,88 @@
+RAM Allocation
+Variable                                                          Address   Size
+--------------------------------------------------------------------------------
+TickCount                                                         0A00h        2
+PressureTime                                                      0A02h        4
+Pressure                                                          0A06h        4
+PressureStep                                                      0A0Ah        2
+PressureStepDelay                                                 0A0Ch        2
+sPressureStepDelay                                                0A0Eh        2
+CalItvMin                                                         0A10h        4
+CalItvMax                                                         0A14h        4
+bReturnSensor                                                     0A18h        1
+bDebug                                                            0A19h        1
+bCalib                                                            0A1Ah        1
+bLongKey                                                          0A1Bh        1
+CalibStep                                                         0A1Ch        1
+CalibStepDelay                                                    0A1Dh        4
+TestMode                                                          0A21h        1
+bAgingMode                                                        0A22h        1
+bAgingEnd                                                         0A23h        1
+bAutoMode                                                         0A24h        1
+bCylXIn                                                           0A25h        1
+bCylYDown                                                         0A26h        1
+bPressureFail                                                     0A27h        1
+bDoorSensorFail                                                   0A28h        1
+bSafeSensorFail                                                   0A29h        1
+bMenuDisplay                                                      0A2Ah        1
+bVarDisplay                                                       0A2Bh        1
+KeyRunCount                                                       0A2Ch        1
+bRun                                                              0A2Dh        1
+RunStep                                                           0A2Eh        1
+RunStepDelay                                                      0A2Fh        4
+RunStepTime                                                       0A33h        4
+mRunStepTime                                                      0A37h        4
+bRunAlarm                                                         0A3Bh        1
+Mode1Step                                                         0A3Ch        1
+sMode1Step                                                        0A3Dh        1
+HiddenStep                                                        0A3Eh        1
+SetupExitTime                                                     0A3Fh        2
+SetData                                                           0A41h        2
+Hidden1SetData                                                    0A43h        2
+BuzzerOnTime                                                      0A45h        2
+BuzzerOffTime                                                     0A47h        2
+BuzzerRepeatCount                                                 0A49h        2
+BuzzerOnCount                                                     0A4Bh        2
+BuzzerOffCount                                                    0A4Dh        2
+ReadPressure                                                      0A4Fh        4
+DownPressure                                                      0A53h        2
+bEmoState                                                         0A55h        1
+bDownPressureEnd                                                  0A56h        1
+bPressureReward                                                   0A57h        1
+QueueData                                                         0A58h      256
+QueueFirst                                                        0B58h        2
+QueueLast                                                         0B5Ah        2
+CommCommandBuffer                                                 0B5Ch       50
+CommCommandSize                                                   0B8Eh        2
+Key                                                               0B90h        1
+ExtKey                                                            0B91h        1
+Sensor                                                            0B92h        1
+Emo                                                               0B93h        1
+bBlink                                                            0B94h        1
+TactTimeCheckIn                                                   0B95h        2
+TactTimeCheckOut                                                  0B97h        2
+TactTimeCheckDown                                                 0B99h        2
+TactTimeCheckUp                                                   0B9Bh        2
+KeyDownCount                                                      0B9Dh        1
+PrevDownKey                                                       0B9Eh        1
+_seed                                                             0B9Fh        4
+p                                                                 0BA3h        2
+bMainStart                                                        0BA5h        1
+bHalfMainStart                                                    0BA6h        1
+IntCount                                                          0BA7h        2
+NewKey                                                            0BA9h        1
+NewExtKey                                                         0BAAh        1
+NewSensor                                                         0BABh        1
+NewEmo                                                            0BACh        1
+OldKey                                                            0BADh        1
+OldExtKey                                                         0BAEh        1
+OldSensor                                                         0BAFh        1
+OldEmo                                                            0BB0h        1
+
+EEPROM Allocation
+Variable                                                          Address   Size
+--------------------------------------------------------------------------------
+
+Register Allocation
+Variable                                                          Register  Size
+--------------------------------------------------------------------------------

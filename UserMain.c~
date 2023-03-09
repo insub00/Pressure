@@ -1,0 +1,953 @@
+#include "hwdefine.h"
+
+
+void CommSubroutine(void)
+{
+    unsigned int tQueueLast = QueueLast;        //루틴 수행중 QueueLast 값이 바뀔수 있으므로 수신확인되면 QueueLast Count 값을 Buffer(tQueueLast)에 저장
+
+    if (QueueFirst != tQueueLast)
+    {
+        while(QueueFirst != tQueueLast)
+        {
+            CommCommandBuffer[CommCommandSize++] = QueueData[QueueFirst++];        //CommCommandBuffer에 수신 Data를 하나씩 저장
+            if (CommCommandSize >= COMMAND_BUFFER_SIZE) CommCommandSize = 0;
+            if (QueueFirst >= QUEUE_SIZE) QueueFirst = 0;
+
+			if ((CommCommandBuffer[CommCommandSize - 1] == '\n') || (CommCommandBuffer[CommCommandSize - 1] == '\r'))    //데이터 마지막에 '\n','r'에 입력이 되면 수신 완료
+			{
+                CommCommandBuffer[CommCommandSize] = 0;                                                                                                                       //CommCommandSize - 1 은 수신 시작시 QueueFirst Count를 증가 시키고 시작했기때문에 마지막 Data를 읽으려면 1Byte전 Data를 읽어야 한다.
+				if (CommCommandSize != 1)        //CommCommandSize를 위에서 증가 시켰기 때문에 0은 읽을 수 없고, 'n','r'이 1Byte를 차지하므로 CommandSize가 1일 경우에는 Data가 없다고 판단. 1보다 클때부터 Data를 살핀다.
+				{
+//                    MainComm("CMD[%d][%d]-%s\n", QueueFirst, tQueueLast, CommCommandBuffer);
+
+					switch(CommCommandSize - 1)
+					{
+                        case 3:
+                        case 1:
+                            CommCommandBuffer[0] = 'H';
+                            CommCommandBuffer[1] = 'E';
+                            CommCommandBuffer[2] = 'L';
+                            CommCommandBuffer[3] = 'P';
+						case 4:
+                            if (strncmpf((char *)CommCommandBuffer, "HELP", 4) == 0)
+							{
+
+                                DebugComm("\n\r");
+                                DebugComm("  Command List\n\r");
+
+                                DebugComm("  HELP       :   Help Meassage\n\r");
+                                DebugComm("  TEST       :   TEST Command\n\r");
+                                DebugComm("  DEBUG      :   DEBUG Command\n\r");
+                                DebugComm("  VER?       :   Version Command\n\r");
+                            }
+							else if (strncmpf((char *)CommCommandBuffer, "TEST", 4) == 0)
+                            {
+                                TestMode = Asc2Hex(CommCommandBuffer[4]);
+                                if(TestMode) DebugComm("Test Mode %d\n\r", TestMode);
+                                else DebugComm("Test Mode Disable\n\r");
+                            }
+                            break;
+                        case 5:
+                            if (strncmpf((char *)CommCommandBuffer, "DEBUG", 5) == 0)
+                            {
+                            	bDebug = !bDebug;
+                                if (bDebug)
+                                {
+                                    DebugComm("Debug Mode Enable\n\r");
+                                }
+                                else
+                                {
+                                    DebugComm("Debug Mode Disable\n\r");
+								}
+                            }
+                            break;
+                       	default:
+							#ifdef DEBUG_MODE
+                           	DebugComm("Command ?\n");
+                            #else
+                            MainComm("ER1:%s\n", CommCommandBuffer);
+                            #endif
+	                        break;
+    	           	}
+        	    }
+           	    CommCommandSize = 0;
+			}
+		}
+	}
+
+}
+
+void SetBuzzer(unsigned char Mode, unsigned char Repeat)
+{
+	switch(Mode)
+    {
+		case 0:
+        	BuzzerOnTime = 10;
+            BuzzerOffTime = 10;
+            break;
+        case 1:
+        	BuzzerOnTime = 50;
+            BuzzerOffTime = 10;
+            break;
+    }
+    BuzzerOnCount = BuzzerOnTime;
+    BuzzerOffCount = BuzzerOffTime;
+    BuzzerRepeatCount = Repeat;
+}
+
+void RunSubroutine(void)	// 10ms
+{
+    if (bRun)
+    {
+		if (bEmoState == 1 || bReturnSensor == 1)		// Emo 누른 상태, 인전 센서
+		{
+			SetItv(PRESSURE_STOP);
+			bRunAlarm |= 0x04;
+
+		}else {
+
+			if (RunStep == RUN_STOP) SetItv(PRESSURE_NOMAL);
+
+			// **************************************************************************************************************************************************
+			if ((bEmoState == 2) || bReturnSensor == 2)	// Run중 센서 & Emo 받으면
+			{
+				SetItv(PRESSURE_RETURN);
+				bRunAlarm |= 0x08;
+			}
+
+			if (((bEmoState == 2) || bReturnSensor == 2) && RunStep <= RUN_PRESSURE_DELAY)	// Emo 입력시 Y축 올리는 단계로 점프하여 실린더 초기상태로 원복시킴
+			{
+				RunStepDelay = 0;
+				RunStep = RUN_PRESSURE_DELAY;
+				bRunAlarm |= 0x01;
+			}
+			// **************************************************************************************************************************************************
+
+			if (RunStepDelay)
+			{
+				RunStepDelay--;
+				RunStepTime++;										// RunStepDelay 사용시 시간 카운터로 사용됨.
+				if ((RunStepDelay % 10) == 0) bVarDisplay = 1;		// 100ms에 한번씩 상태 LCD에 출력
+			}else {													// RunStepDelay 0일때만 실행
+				if (RunStep == RUN_PRESSURE_DELAY && bPressureFail) bRunAlarm |= 0x02;
+
+				RunStepTime = 0;
+				switch(RunStep)
+				{
+				case RUN_STOP:
+					RunStep = RUN_START_DELAY;
+					RunStepDelay = 10;	// 100ms delay (2014.10.15_이원욱D 초기 빨리 진입하게 변경요청)
+					bVarDisplay = 1;
+					break;
+
+				case RUN_START_DELAY:
+					RunStep = RUN_JIG_IN;
+					CYL_X_IN;
+					bVarDisplay = 1;
+					break;
+
+				case RUN_JIG_IN:
+					if (Sensor & CYL_X_IN_SENSOR)
+					{
+                        if (bAutoMode == 2)
+                        {
+    						SetItv(PRESSURE_Y_DOWN);
+						    RunStep = RUN_EXHAUST1;
+                        }else {
+    						SetItv(Pressure);
+						    RunStep = RUN_CYL_DOWN;   
+                            bDownPressureEnd = 1;
+
+                        }
+						CYL_Y_DOWN;
+						bVarDisplay = 1;
+
+						RunStepDelay = 100;
+					}
+					break;
+
+				case RUN_EXHAUST1:
+					SetItv(PRESSURE_EXHAUST2);
+
+					RunStep = RUN_CYL_DOWN;
+					RunStepDelay = 100;		// 1sec
+					break;
+
+				case RUN_CYL_DOWN:
+					if (Sensor & CYL_Y_DOWN_SENSOR)
+					{
+						PressureTime = GetEeprom2(0);
+						Pressure = GetEeprom2(2);
+
+						if (bDownPressureEnd == 1)
+						{
+							RunStep = RUN_PRESSURE_DELAY;
+							RunStepDelay = PressureTime * 10;
+						}
+						bVarDisplay = 1;
+					}
+					break;
+
+				case RUN_PRESSURE_DELAY:
+					RunStep = RUN_CYL_UP;
+					bDownPressureEnd = 0;    
+                    
+                    if (bRunAlarm == 0x01) RunStepDelay = 100; 	// 14.10.14
+				    else RunStepDelay = 10;
+
+					SetItv(PRESSURE_NOMAL);
+
+					CYL_Y_UP;  
+                    
+                    if (bPressureFail) SetBuzzer(1, 2);
+                    else SetBuzzer(0, 0);
+                    
+                    RunStepDelay = 30;
+					bVarDisplay = 1;
+					break;
+
+				case RUN_CYL_UP:
+					//if (Sensor & CYL_Y_UP_SENSOR)	// TactTime 축소로 센서 받기전 X축 Out적용으로 주석처리
+					{
+						if (bReturnSensor == 2 || (bEmoState == 2))
+						{
+							RunStep = RUN_JIG_OUT;
+							RunStepDelay = 10;
+							CYL_X_OUT;
+							bVarDisplay = 1;
+						}else {
+							if (bDoorSensorFail == 0 && bSafeSensorFail == 0)
+							{
+								RunStep = RUN_JIG_OUT;
+								RunStepDelay = 10;
+								CYL_X_OUT;
+								bVarDisplay = 1;
+							}
+						}
+					}
+					break;
+
+				case RUN_JIG_OUT:
+					if (Sensor & CYL_X_OUT_SENSOR)
+					{
+						RunStep = RUN_END;
+						RunStepDelay = 10;
+						bVarDisplay = 1;
+					}
+					break;
+
+				case RUN_END:
+                    bPressureFail = 0; 
+                    bRunAlarm = 0;
+					if (bRunAlarm) SetBuzzer(1, 1);
+					else SetBuzzer(0, 1);
+
+					if (bReturnSensor || (bEmoState == 2))
+					{
+						bReturnSensor = 0;
+						bEmoState = 0;
+						PressureTime = GetEeprom2(0);
+						Pressure = GetEeprom2(2);
+
+						CalItvMin = GetEeprom2(10);
+						//CalItvMax = GetEeprom2(12);
+                                                CalItvMax = GetEeprom4(12);  
+
+						SetItv(Pressure);
+						//GetItv();
+					}
+					//bReturnRun = 0;
+					if (bAgingEnd) bRun = 0;
+            	    else if (!bAgingEnd && bAgingMode) bRun = 1;		// Aging Mode시 반복되게 bRun 플래그 ON
+				    else bRun = 0;
+
+					RunStep = RUN_STOP;
+					bMenuDisplay = 1;
+					bVarDisplay = 1;
+					break;
+				}
+			}
+		}
+    }else {
+		RunStep = RUN_STOP;
+		RunStepDelay = 0;
+        RunStepTime = 0;
+		bDownPressureEnd = 0;
+
+		if (bAutoMode)	// AutoMode & EdgeMode
+        {
+            bCylXIn = 0;
+            bCylYDown = 0;
+        	CYL_X_OUT;
+        	CYL_Y_UP;
+        }
+    }
+}
+
+void DisplaySubroutine(void)	// 10ms
+{
+	// LCD
+	if (bMenuDisplay)
+    {
+		LcdClear();
+       	switch(SetupStep)
+		{
+        case 0:	// NORMAL
+          	if (TestMode)
+            {
+
+        	}else {
+		    	Lcdprintf(0, 0, "WINDOW PRESS BASE:");
+                Lcdprintf(18, 0, VERSION);
+                Lcdprintf(0, 2, "Status:");
+                if (bRun) Lcdprintf(7, 2, "RUN  TIM:");
+                else Lcdprintf(7, 2, "STOP TIM:");
+
+            	if (bAutoMode == 1)							// AutoMode
+                {
+					Lcdprintf(0, 1, "AUTO:");
+				}else if (bAutoMode == 2){					// EdgeMode
+					Lcdprintf(0, 1, "EDGE:");
+                }else {
+					Lcdprintf(0, 1, "MAN :");				// ManualMode
+                }
+				if (bAgingMode) Lcdprintf(0, 1, "AGING:");	// AgingMode
+
+                Lcdprintf(5, 1, "%2d.%dsec %d.%02dkgf", PressureTime / 10, PressureTime % 10, Pressure / 100, Pressure % 100);
+            }
+            LcdCursorOff();
+            break;
+
+        case 1:	// 압력
+			Lcdprintf(0, 0, "       SETUP");
+    		Lcdprintf(0, 1, " PRESSURE :      kgf");
+            Lcdprintf(0, 2, " LIMIT (%d ~ %d)", PRESSURE_MIN, PRESSURE_MAX_);
+            LcdCursorOn();
+            break;
+
+        case 2:	// TIME
+			Lcdprintf(0, 0, "       SETUP");
+    		Lcdprintf(0, 1, " TIME     :      sec");
+            Lcdprintf(0, 2, " LIMIT (%d ~ %d)", PRESSURE_TIME_MIN, PRESSURE_TIME_MAX);
+            LcdCursorOn();
+            break;
+        }
+
+	    bMenuDisplay = 0;
+        bVarDisplay = 1;
+    }
+
+    if (bVarDisplay)
+    {
+       	switch(SetupStep)
+		{
+        case 0:	// NORMAL
+          	if (TestMode)
+            {
+                ReadPressure = GetItv();
+    			Lcdprintf(0, 0, "Ky=%02X,EK=%02X,Ss=%02X", Key, ExtKey, Sensor);
+		    	Lcdprintf(0, 1, "Run=%d,Step=%2d,Dly=%2d", bRun, RunStep, RunStepDelay);
+    			Lcdprintf(0, 2, "SetupStep = %d", SetupStep);
+    			//Lcdprintf(0, 3, "CH0 = %ld(0x%04X)", Ltc1865Read(0), Ltc1865Read(0));
+    			Lcdprintf(0, 3, "CH0 = %d.%02dkgf", ReadPressure / 100, ReadPressure % 100);
+            }else if (bCalib) {
+                switch(CalibStep)
+                {
+                    case 0:
+                    
+                    case 1:
+                    
+                        break;
+                        
+                    case 10:    // ITV 0.05 Output  4mA  Set VR
+        	    		Lcdprintf(0, 0, "ITV 4mA Calib Mode!!");
+	    	        	Lcdprintf(0, 1, "Set VR10            ");
+            			Lcdprintf(0, 2, "AD0 = %ld(0x%04X)", Ltc1865Read(0), Ltc1865Read(0));
+            			Lcdprintf(0, 3, "CH0 = %d.%02dkgf", ReadPressure / 100, ReadPressure % 100);
+                        break;
+                    case 11:    // ITV 9.00 Output  20mA  Set VR
+        	    		Lcdprintf(0, 0, "ITV 20mA Calib Mode!");
+	    	        	Lcdprintf(0, 1, "Set VR11            ");
+            			Lcdprintf(0, 2, "AD0 = %ld(0x%04X)", Ltc1865Read(0), Ltc1865Read(0));
+            			Lcdprintf(0, 3, "CH0 = %d.%02dkgf", ReadPressure / 100, ReadPressure % 100);
+                        break;
+                              
+                    case 12:    // ITV INPUT CALIB 
+        	    		Lcdprintf(0, 0, "ITV 1V Calib Mode! ");
+	    	        	Lcdprintf(0, 1, "Set Volt 1V  :%ld", CalItvMin);
+            			Lcdprintf(0, 2, "AD0 = %ld(0x%04X)", Ltc1865Read(0), Ltc1865Read(0));
+            			Lcdprintf(0, 3, "CH0 = %d.%02dkgf", ReadPressure / 100, ReadPressure % 100);
+                        break;
+                    case 13:    // ITV INPUT CALIB
+        	    		Lcdprintf(0, 0, "ITV 5V Calib Mode! ");
+	    	        	Lcdprintf(0, 1, "Set Volt 5V  :%ld", CalItvMax);
+            			Lcdprintf(0, 2, "AD0 = %ld(0x%04X)", Ltc1865Read(0), Ltc1865Read(0));
+            			Lcdprintf(0, 3, "CH0 = %d.%02dkgf", ReadPressure / 100, ReadPressure % 100);
+                        break;
+                
+                }            
+        	}else {
+                ReadPressure = GetItv();
+  		//Lcdprintf(13, 3, "%d.%02dkgf", Pressure / 100, Pressure % 100);
+  		Lcdprintf(13, 3, "%d.%02dkgf", ReadPressure / 100, ReadPressure % 100);
+                //Lcdprintf(16, 2, "%2d.%d", (RunStepTime / 10) / 10, (RunStepTime / 10) % 10);
+                Lcdprintf(16, 2, "%d", RunStepTime);
+		if (bRun)
+                {
+                    switch(RunStep)
+                    {
+        			case RUN_STOP:
+		                Lcdprintf(0, 3, "STOP       ");
+		        		break;
+
+        			case RUN_START_DELAY:
+		                Lcdprintf(0, 3, "START DELAY");
+		            	break;
+
+        			case RUN_JIG_IN:
+		                Lcdprintf(0, 3, "JIG IN     ");
+		            	break;
+
+					case RUN_EXHAUST1:
+						Lcdprintf(0, 3, "CYL D1     ");
+			           	break;
+
+					case RUN_EXHAUST2:
+						Lcdprintf(0, 3, "CYL D2     ");
+			           	break;
+
+        			case RUN_CYL_DOWN:
+		                Lcdprintf(0, 3, "CYL DOWN   ");
+			           	break;
+
+        			case RUN_PRESSURE_DELAY:
+		                Lcdprintf(0, 3, "PRESSURE   ");
+		                break;
+
+        			case RUN_CYL_UP:
+		                Lcdprintf(0, 3, "CYL UP     ");
+		                break;
+
+        			case RUN_JIG_OUT:
+		                Lcdprintf(0, 3, "JIG OUT    ");
+		                break;
+
+        			case RUN_END:
+		                Lcdprintf(0, 3, "END        ");
+						break;
+
+                    }
+                }else {
+                    if ((bEmoState == 1) || (bEmoState == 2))
+                    {
+                    	if (bBlink)
+                        {
+			                Lcdprintf(0, 3, "EMERGENCY!!!");
+                            //Lcdprintf(0, 3, "EME%d", bEmoState);
+                        }else {
+			                Lcdprintf(0, 3, "            ");
+                        }
+                    }else if (bAutoMode && bSafeSensorFail) {
+                    	if (bBlink)
+                        {
+			                Lcdprintf(0, 3, "SAFE SENSOR!");
+                        }else {
+			                Lcdprintf(0, 3, "            ");
+                        }
+                    }else if (bAutoMode && bDoorSensorFail) {
+                    	if (bBlink)
+                        {
+			                Lcdprintf(0, 3, "DOOR SENSOR!");
+                        }else {
+			                Lcdprintf(0, 3, "            ");
+                        }
+                    }else if (bAutoMode && bPressureFail) {
+                    	if (bBlink)
+                        {
+			                Lcdprintf(0, 3, "PRESSURE AL!");
+                        }else {
+			                Lcdprintf(0, 3, "            ");
+                        }
+                    }else if (bAutoMode) {
+		                Lcdprintf(0, 3, "READY       ");
+                    }else {
+						Lcdprintf(0, 3, "CYL : ");
+            	        if (bCylXIn) Lcdprintf(6, 3, "IN -");
+        	            else Lcdprintf(6, 3, "OUT-");
+
+    	                if (bCylYDown) Lcdprintf(10, 3, "DO");
+	                    else Lcdprintf(10, 3, "UP");
+                    }
+                }
+
+            }
+            break;
+
+        case 1:	// 압력
+    		Lcdprintf(12, 1, "%d.%02d", SetData / 100, SetData % 100);
+            LineDecision(15, 1);
+            break;
+
+        case 2:	// TIME
+    		Lcdprintf(12, 1, "%2d.%d", SetData / 10, SetData % 10);
+            LineDecision(15, 1);
+            break;
+
+        }
+    	bVarDisplay = 0;
+    }
+
+
+	// LED
+    if (bPressureFail)
+    {
+		if (!bRun)
+        {
+        	LedPassOff();
+        	LedFailOn();
+        }
+    }else {
+    	if (bRunAlarm) {
+        	if (bBlink)
+            {
+				LedPassOff();
+       			LedFailOn();
+            }else {
+				LedPassOff();
+       			LedFailOff();
+            }
+        }else {
+			LedFailOff();
+        	LedPassOff();
+        }
+    }
+
+    if (bRun)
+	{
+       	if (bBlink)
+        {
+	        LedComOn();
+        }else {
+	        LedComOff();
+        }
+        
+        if (RunStep == RUN_PRESSURE_DELAY) 
+        {
+            if (!bPressureFail && !bRunAlarm)
+            {        
+                if (bBlink)
+                {
+                    LedPassOn();
+       			    LedFailOff();  
+                } else{
+                    LedPassOff();
+       			    LedFailOff(); 
+                }
+            }else { 
+                if (bBlink)
+                {  
+                    LedPassOff();
+       			    LedFailOn();
+                } else {
+                    LedPassOff();
+       			    LedFailOff();
+                }
+            }
+        }
+    }else {
+    	if (bLongKey) LedComOff();
+        else LedComOn();
+    }
+}
+
+void KeySubroutine(void)	// 100ms
+{
+	static unsigned char KeyDownCount = 0;
+    static unsigned char PrevDownKey = 0;
+	
+	static unsigned int TimeCheckIn = 0;
+	static unsigned int TimeCheckOut = 0;
+	static unsigned int TimeCheckDown = 0;
+	static unsigned int TimeCheckUp = 0;
+
+        if (Key)	// 키 눌려진 상태
+    {
+		PrevDownKey = Key;
+    	if (++KeyDownCount >= 200) KeyDownCount--;
+	
+		if (!bAutoMode)		// Manual Mode 시 Time Check
+		{
+                        RunStepTime++;
+/*			if (bCylXIn && (!(Sensor & CYL_X_IN_SENSOR))) RunStepTime = TimeCheckIn++;			// In
+			else TimeCheckIn = 0;
+			if ((!bCylXIn) && (!(Sensor & CYL_X_OUT_SENSOR))) RunStepTime = TimeCheckOut++;		// Out
+			else TimeCheckOut = 0;
+			if (bCylYDown && (!(Sensor & CYL_Y_DOWN_SENSOR))) RunStepTime = TimeCheckDown++;		// Down
+			else TimeCheckDown = 0;
+			if ((!bCylYDown) && (!(Sensor & CYL_Y_UP_SENSOR))) RunStepTime = TimeCheckUp++;	// Up
+			else TimeCheckUp = 0;  */
+                        bVarDisplay = 1;
+		} else{
+			TimeCheckIn = 0;
+			TimeCheckOut = 0;
+			TimeCheckDown = 0;
+			TimeCheckUp = 0;
+		}
+		
+        if (KeyDownCount > 10)	//1sec 이상
+        {
+			bLongKey = 1;
+        	switch(Key)
+        	{
+				case KEY_UP:
+                	switch(SetupStep)
+                    {
+                    	case 0:
+                        	break;
+                        case 1:	// 압력 설정
+                        	if (KeyDownCount > 30) {
+                            	SetData += 10;
+                        		if (SetData > PRESSURE_MAX_) SetData = PRESSURE_MAX_;
+							}else {
+                        		if (++SetData > PRESSURE_MAX_) SetData--;
+                            }
+                            bVarDisplay = 1;
+                            break;
+                    	case 2:	// Pressure Time
+                        	if (KeyDownCount > 30) {
+                            	SetData += 10;
+                        		if (SetData > PRESSURE_TIME_MAX) SetData = PRESSURE_TIME_MAX;
+                            }else {
+                        		if (++SetData > PRESSURE_TIME_MAX) SetData--;
+                            }
+                            bVarDisplay = 1;
+                            break;
+                    }
+					break;
+
+                case KEY_DOWN:
+                	switch(SetupStep)
+                    {
+                    	case 0:
+                        	break;
+                        case 1:
+                        	if (KeyDownCount > 30) {
+                            	if (SetData > PRESSURE_MIN + 10) SetData -= 10;
+                                else SetData = PRESSURE_MIN;
+                        	}else {
+	                        	if (SetData > PRESSURE_MIN) SetData--;
+                            }
+                            bVarDisplay = 1;
+                            break;
+                    	case 2:	// Pressure Time
+                        	if (KeyDownCount > 30) {
+                            	if (SetData > PRESSURE_TIME_MIN + 10) SetData -= 10;
+                                else SetData = PRESSURE_TIME_MIN;
+                        	}else {
+                            	if (SetData > PRESSURE_TIME_MIN) SetData--;
+                            }
+                            bVarDisplay = 1;
+                            break;
+                    }
+                	break;
+        	}
+
+			if (Key == (SW_START1 | SW_START2))
+            {
+				if (bAgingMode)
+				{
+					KeyDownCount = 0;
+					SetBuzzer(1, 2);
+					if (!bRun)	//Aging Mode 시작
+					{
+						bAgingEnd = 0;
+						if (!bAgingEnd)
+						{
+							if (bDoorSensorFail == 0 && bSafeSensorFail == 0 && !Emo && !bPressureFail)
+							{
+								SetupStep = 0;
+								bRun = 1;
+								bRunAlarm = 0;
+								bMenuDisplay = 1;
+								bVarDisplay = 1;
+							}else {
+								SetBuzzer(1, 1);
+								bVarDisplay = 1;
+							}
+						}
+					}else {
+						bAgingEnd = 1;
+						if (bAgingEnd)
+						{
+							//bRun = 0;
+							bRunAlarm = 0;
+							bMenuDisplay = 1;
+							bVarDisplay = 1;
+
+							//SetBuzzer(0, 2);
+						}
+					}
+				}
+            }
+
+        }else {
+        	if (Key == (SW_START1 | SW_START2))
+            {
+				if (bReturnSensor == 1 || bEmoState == 1)
+				{
+					bReturnSensor = 2;
+					bEmoState = 2;
+				}else if (bAutoMode && !bRun)
+				{
+					bAgingMode = 0;
+					if (bDoorSensorFail == 0 && bSafeSensorFail == 0 && !Emo && !bPressureFail)
+					{
+						SetupStep = 0;
+						bRun = 1;
+						bRunAlarm = 0;
+						bMenuDisplay = 1;
+						bVarDisplay = 1;
+					}else {
+						SetBuzzer(1, 1);
+						bVarDisplay = 1;
+					}
+				}
+            }
+        }
+    }else {	// 키 UP 상태
+    	if (PrevDownKey)
+        {
+        	SetupExitTime = SETUP_EXIT_TIME;
+    		if (KeyDownCount < 10)	// Short Key 1sec 이하
+        	{
+        		switch(PrevDownKey)
+                {
+				case KEY_MENU:	// 압력/시간
+                	if (SetupStep)
+                    {
+                		if (++SetupStep >= 2) SetupStep = 1;
+
+                    	if (SetupStep == 1) SetData = Pressure;
+                    	else if (SetupStep == 2) SetData = PressureTime;
+
+	                    bMenuDisplay = 1;
+                    }
+                    break;
+				case KEY_MODE:	// 자동/수동
+                	break;
+
+				case KEY_ENTER:
+					switch(SetupStep)
+                    {
+                        case 1:	// 압력
+                        	Pressure = SetData;
+							SetEeprom2(2, Pressure);
+							SetItv(Pressure);
+
+                            SetupStep = 2;
+                            SetData = PressureTime;
+                            bMenuDisplay = 1;
+		                    SetBuzzer(0, 0);
+                            break;
+                    	case 2:	// 압력시간
+                        	PressureTime = SetData;
+							SetEeprom2(0, PressureTime);
+
+                            SetupStep = 1;
+                            SetData = Pressure;
+                            bMenuDisplay = 1;
+		                    SetBuzzer(0, 0);
+                            break;
+                    }
+                    
+                    if (bCalib && CalibStep >= 10){
+                        switch(CalibStep)
+                        {
+                            case 12:
+                            	CalItvMin = Ltc1865Read(0);
+                            	SetEeprom2(10, CalItvMin);
+                                break;
+                                
+                            case 13:
+                            	CalItvMax = (unsigned long)((unsigned long)Ltc1865Read(0) * 1);     
+                            	SetEeprom4(12, CalItvMax);
+                                break;
+                        }
+                       SetBuzzer(0, 0);
+                    }
+            		break;
+
+				case KEY_UP:
+                	switch(SetupStep)
+                    {
+                    	case 0:
+                        	if (!bAutoMode)
+                            {
+                                SetItv(PRESSURE_NOMAL);     // 15.01.27 기구적 실린더 동작 문제로 2.0k로 고정
+                                if (Sensor & CYL_X_IN_SENSOR || Sensor & CYL_X_OUT_SENSOR)
+                                {
+					                bCylYDown = !bCylYDown;
+                                    if (bCylYDown) CYL_Y_DOWN;
+                                    else CYL_Y_UP;
+                                }
+                                bVarDisplay = 1;
+                            }
+                        	break;
+                        case 1:
+                        	if (++SetData > PRESSURE_MAX) SetData--;
+                            bVarDisplay = 1;
+                            break;
+                    	case 2:	// Pressure Time
+                        	if (++SetData > PRESSURE_TIME_MAX) SetData--;
+                            bVarDisplay = 1;
+                            break;
+                    }
+                    SetBuzzer(0, 0);
+                    break;
+
+				case KEY_DOWN:
+                	switch(SetupStep)
+                    {
+                    	case 0:
+                        	if (!bAutoMode && !bCylYDown)
+                            {
+                                SetItv(PRESSURE_NOMAL);     // 15.01.27 기구적 실린더 동작 문제로 2.0k로 고정
+                                if (Sensor & CYL_Y_UP_SENSOR)
+                                {
+					                bCylXIn = !bCylXIn;
+                                    if (bCylXIn) CYL_X_IN;
+                                    else CYL_X_OUT;
+                                }
+                                bVarDisplay = 1;
+                            }
+                        	break;
+                        case 1:
+                        	if (SetData > PRESSURE_MIN) SetData--;
+                            bVarDisplay = 1;
+                            break;
+                    	case 2:	// Pressure Time
+                        	if (SetData > PRESSURE_TIME_MIN) SetData--;
+                            bVarDisplay = 1;
+                            break;
+                    }
+                    SetBuzzer(0, 0);
+                    break;
+				case KEY_FN:
+                    if (bCalib && CalibStep >= 10)
+                    {
+                        if (++CalibStep >= 12) CalibStep = 10;
+                    }
+                    SetBuzzer(0, 0);
+                    bMenuDisplay = 1;
+                	break;
+
+                }
+        	}else {	// Long Key
+               	switch(PrevDownKey)
+                {
+				case KEY_MENU:	// 압력/시간
+                	if (SetupStep)
+                    {
+                    	SetupStep = 0;
+                    }else {
+                    	SetupStep = 1;
+                    }
+                    SetData = Pressure;
+                    bMenuDisplay = 1;
+                    SetBuzzer(0, 1);
+                    break;
+
+				case KEY_MODE:	// 자동/수동
+                	if (!bRun && SetupStep == 0)
+                    {
+						if (++bAutoMode >= 3) bAutoMode = 0;
+                        bMenuDisplay = 1;
+						bAgingMode = 0;
+						SetEeprom2(4, bAutoMode);
+                    }
+                    SetBuzzer(0, 1);
+					break;
+				case KEY_ENTER:
+                	break;
+				case KEY_UP:
+                    break;
+                case KEY_DOWN:
+                	break;
+				case KEY_FN:
+                	if (TestMode)
+                    {
+                		bCalib = 1;
+                        CalibStep = 0;
+                        CalibStepDelay = 100;
+	                    SetBuzzer(1, 0);
+                    }else {
+						if (!bRun && SetupStep == 0)
+						{
+							bAgingMode = !bAgingMode;
+							bMenuDisplay = 1;
+							bAutoMode = 0;
+						}
+						SetBuzzer(0, 1);
+                    }
+                	break;
+
+
+                case KEY_UP | KEY_DOWN:
+                	TestMode = !TestMode;
+                    bCalib = 0; 
+                    bMenuDisplay = 1;
+                    SetBuzzer(1, 0);
+                    break;   
+                    
+                case KEY_FN | KEY_MENU: // 교정모드 키
+                    bCalib = !bCalib;
+					bMenuDisplay = 1;
+                    
+                    if (bCalib)
+                    {
+                        CalibStep = 10;
+                    }else {
+                        SetItv(Pressure);
+                    }
+                    SetBuzzer(1, 0);
+                    break;
+                }
+            }
+        }else {
+			if (SetupExitTime && SetupStep)
+            {
+            	SetupExitTime--;
+                if (SetupExitTime == 0)
+                {
+                	SetupStep = 0;
+                    bMenuDisplay = 1;
+                    SetBuzzer(0, 1);
+                }
+            }
+        }
+		bLongKey = 0;
+    	KeyDownCount = 0;
+		PrevDownKey = 0;
+    }
+}
+
+void StepPressure(unsigned int p)
+{
+	unsigned int i;
+
+	for (i=0; i<=p; i+=10)
+	{
+		SetItv(i);
+		//GetItv();
+	}
+
+	SetBuzzer(2, i);
+
+	DelayMs(1000);
+}
+
+
+
+
+
+
