@@ -1,0 +1,10 @@
+main DSTACK_USAGE:0 DSTACK_LEVEL:0 FILE:"C:\cvavr2\lib\With_setup.lib" LINE:127
+HwInit DSTACK_USAGE:0 DSTACK_LEVEL:0 FILE:"C:\cvavr2\lib\With_main.lib" LINE:124
+FirstReturn DSTACK_USAGE:0 DSTACK_LEVEL:0 FILE:"C:\cvavr2\lib\With_main.lib" LINE:102
+Lcdprintf DSTACK_USAGE:106 DSTACK_LEVEL:106 FILE:"C:\cvavr2\lib\With_lcd.lib" LINE:73
+vsprintf DSTACK_USAGE:8 DSTACK_LEVEL:114 FILE:"C:\cvavr2\lib\stdio.lib" LINE:1311
+_print DSTACK_USAGE:92 DSTACK_LEVEL:206 FILE:"C:\cvavr2\lib\stdio.lib" LINE:1033
+_ftoe DSTACK_USAGE:16 DSTACK_LEVEL:222 FILE:"C:\cvavr2\lib\stdio.lib" LINE:974
+floor DSTACK_USAGE:4 DSTACK_LEVEL:226 FILE:"C:\cvavr2\lib\math.lib" LINE:478
+ftrunc DSTACK_USAGE:4 DSTACK_LEVEL:230 FILE:"C:\cvavr2\lib\math.lib" LINE:420
+timer0_ovf_isr DSTACK_USAGE:8 DSTACK_LEVEL:238 FILE:"C:\cvavr2\lib\With_setup.lib" LINE:81
