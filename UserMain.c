@@ -356,7 +356,8 @@ void DisplaySubroutine(void)	// 10ms
 				{
 				case MODE1_OCTA:
 					//Lcdprintf(13, 0, "WINDOW PRESS OCTA:");
-					Lcdprintf(0, 0, "MODE:OCTA C:     V");
+//					Lcdprintf(0, 0, "MODE:OCTA C:     V");
+					Lcdprintf(0, 0, "MODE2:OCTA C:     V");
 					break;
 				case MODE1_TAPE:
 					//Lcdprintf(13, 0, "WINDOW PRESS TAPE:");
