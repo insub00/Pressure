@@ -64,6 +64,7 @@ void CommSubroutine(void)
                                     DebugComm("Debug Mode Enable\n\r");
 									DebugComm("TEST Mode Enable\n\r");
 									DebugComm("TEST5\n\r");
+									DebugComm("TEST6\n\r");
                                 }
                                 else
                                 {
